@@ -1,0 +1,347 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Feed {
+  id         Int     @id @default(autoincrement()) @map("feed_id")
+  name       String
+  definition Json
+  adapterId  Int     @map("adapter_id")
+  Data       Data[]
+  adapter    Adapter @relation(fields: [adapterId], references: [id], onDelete: Cascade)
+
+  @@map("feeds")
+}
+
+model Adapter {
+  id          Int          @id @default(autoincrement()) @map("adapter_id")
+  adapterHash String       @unique @map("adapter_hash")
+  name        String
+  decimals    Int
+  Aggregator  Aggregator[]
+  feeds       Feed[]
+
+  @@map("adapters")
+}
+
+model Aggregator {
+  id                Int         @id @default(autoincrement()) @map("aggregator_id")
+  aggregatorHash    String      @unique @map("aggregator_hash")
+  address           String
+  active            Boolean     @default(false)
+  name              String      @unique
+  heartbeat         Int
+  threshold         Float
+  absoluteThreshold Float       @map("absolute_threshold")
+  adapterId         Int         @map("adapter_id")
+  fetcherType       Int         @default(0) @map("fetcher_type")
+  chainId           Int         @map("chain_id")
+  nameHash          String?     @map("name_hash")
+  Aggregate         Aggregate[]
+  adapter           Adapter     @relation(fields: [adapterId], references: [id])
+  Data              Data[]
+  Chain             Chains      @relation(fields: [chainId], references: [chainId])
+
+  @@map("aggregators")
+}
+
+model Data {
+  id           Int        @id @default(autoincrement()) @map("data_id")
+  timestamp    DateTime   @db.Timestamptz(6)
+  value        BigInt
+  aggregatorId Int        @map("aggregator_id")
+  feedId       Int        @map("feed_id")
+  aggregator   Aggregator @relation(fields: [aggregatorId], references: [id], onDelete: Cascade)
+  feed         Feed       @relation(fields: [feedId], references: [id])
+
+  @@map("data")
+}
+
+model Aggregate {
+  id           Int        @id @default(autoincrement()) @map("aggregate_id")
+  timestamp    DateTime   @db.Timestamptz(6)
+  value        BigInt
+  aggregatorId Int        @map("aggregator_id")
+  aggregator   Aggregator @relation(fields: [aggregatorId], references: [id], onDelete: Cascade)
+
+  @@index([aggregatorId, timestamp(sort: Desc)])
+  @@map("aggregates")
+}
+
+model Chains {
+  chainId    Int          @id @default(autoincrement()) @map("chain_id")
+  name       String       @unique
+  iconUrl    String?      @map("icon_url")
+  reporters  Reporters[]
+  Aggregator Aggregator[]
+  Listener   Listener[]
+  VrfKey     VrfKey[]
+  ChainRpc   ChainRpc[]
+
+  @@map("chains")
+}
+
+model Reporters {
+  address           String   @db.VarChar(42)
+  chainId           Int      @map("chain_id")
+  oracleAddress     String   @db.VarChar(42)
+  privateKey        String   @db.VarChar(164)
+  reporterId        Int      @id @default(autoincrement()) @map("reporter_id")
+  serviceId         Int      @map("service_id")
+  fulfillMinimumGas Int?     @map("fulfill_minimum_gas")
+  Chains            Chains   @relation(fields: [chainId], references: [chainId], onDelete: NoAction, onUpdate: NoAction)
+  Services          Services @relation(fields: [serviceId], references: [serviceId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("reporters")
+}
+
+model Services {
+  name      String      @unique
+  serviceId Int         @id @default(autoincrement()) @map("service_id")
+  reporters Reporters[]
+  Listener  Listener[]
+
+  @@map("services")
+}
+
+model Listener {
+  id        Int      @id @default(autoincrement()) @map("listener_id")
+  address   String   @db.VarChar(42)
+  eventName String   @map("event_name") @db.VarChar(255)
+  chain     Chains   @relation(fields: [chainId], references: [chainId])
+  chainId   Int      @map("chain_id")
+  service   Services @relation(fields: [serviceId], references: [serviceId])
+  serviceId Int      @map("service_id")
+
+  @@map("listeners")
+}
+
+model VrfKey {
+  id      Int    @id @default(autoincrement()) @map("vrf_key_id")
+  chainId Int    @map("chain_id")
+  keyHash String @map("key_hash") @db.VarChar(256)
+  pk      String @db.VarChar(256)
+  pkX     String @map("pk_x") @db.VarChar(256)
+  pkY     String @map("pk_y") @db.VarChar(256)
+  sk      String @db.VarChar(256)
+  chain   Chains @relation(fields: [chainId], references: [chainId])
+
+  @@map("vrf_keys")
+}
+
+model ChainRpc {
+  id        Int      @id @default(autoincrement())
+  chainId   Int      @map("chain_id")
+  rpcUrl    String   @map("rpc_url")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  chain     Chains   @relation(fields: [chainId], references: [chainId])
+
+  @@map("chain_rpc")
+}
+
+// Prepayment account
+model PrepaymentAccount {
+  id         Int        @id
+  account    String     @unique @map("account")
+  txHash     String?    @map("tx_hash")
+  owner      String     @map("owner")
+  accType    String     @map("acc_type")
+  status     String     @default("active") @map("status") // active, inactive, deleted
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  Consumer   Consumer[]
+
+  @@map("prepayment_account")
+}
+
+// ADCS
+
+model AdcsOutputType {
+  id                   Int           @id @default(autoincrement())
+  name                 String
+  coordinatorAddress   String?       @map("coordinator_address")
+  fulfillDataRequestFn String?       @map("fulfill_data_request_fn")
+  format               String?       @map("format")
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  AdcsAdaptor          AdcsAdaptor[]
+
+  @@map("adcs_output_type")
+}
+
+model AdcsCategory {
+  id           Int            @id @default(autoincrement())
+  name         String
+  type         String         @default("adaptor") @map("type") // adaptor, provider, data_provider
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  AdcsAdaptor  AdcsAdaptor[]
+  AdcsProvider AdcsProvider[]
+
+  @@map("adcs_category")
+}
+
+model AdcsNode {
+  id               Int     @id @default(autoincrement())
+  nodeId           Int     @map("node_id") // is provider or adaptor id
+  nodeType         String  @map("node_type") // is provider or adaptor
+  methodName       String? @map("method_name")
+  providerMethodId Int?    @map("method_id")
+  inputValues      String  @map("input_values") // what value is input for the node from IR
+  adaptorId        Int?    @map("adaptor_id")
+  index            Int     @map("index")
+  outputName       String? @map("output_name")
+
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  providerMethod AdcsProviderMethod? @relation(fields: [providerMethodId], references: [id])
+  adaptor        AdcsAdaptor?        @relation(fields: [adaptorId], references: [id])
+
+  @@map("adcs_node")
+}
+
+model AdcsProvider {
+  id             Int                  @id @default(autoincrement())
+  code           String               @unique @map("code") // with prefix 'P'+byte[32]
+  name           String
+  description    String
+  iconUrl        String?              @map("icon_url")
+  baseUrl        String               @map("base_url")
+  apiKey         String?              @map("api_key")
+  documentLink   String?              @map("document_link")
+  prUrl          String               @unique @map("pr_url")
+  status         String               @default("active") @map("status") // active, inactive, deleted
+  creator        String?              @map("creator")
+  requestCount   Int                  @default(0) @map("request_count")
+  categoryId     Int?                 @map("category_id")
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  providerMethod AdcsProviderMethod[]
+  category       AdcsCategory?        @relation(fields: [categoryId], references: [id])
+
+  @@map("adcs_provider")
+}
+
+model AdcsProviderMethod {
+  id            Int     @id @default(autoincrement())
+  providerId    Int     @map("provider_id")
+  methodName    String  @map("method_name")
+  methodType    String  @map("method_type") //get, post, put, delete
+  endpoint      String  @map("endpoint")
+  inputType     String  @map("input_type") //body or query
+  description   String  @map("description")
+  playgroundUrl String? @map("playground_url")
+
+  inputSchema  Json?    @map("input_schema")
+  outputSchema Json?    @map("output_schema")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  provider AdcsProvider @relation(fields: [providerId], references: [id])
+  nodes    AdcsNode[]
+
+  @@map("adcs_provider_method")
+}
+
+model AdcsAdaptor {
+  id              Int      @id @default(autoincrement())
+  code            String   @unique @map("code") // with prefix 'A'+byte[32]
+  name            String
+  description     String
+  iconUrl         String?  @map("icon_url")
+  inputSchema     Json?    @map("input_schema")
+  outputSchema    Json?    @map("output_schema")
+  coreLLM         String?  @map("core_llm")
+  staticContext   String?  @map("static_context")
+  nodesDefinition String?  @map("nodes_definition")
+  creator         String?  @map("creator")
+  requestCount    Int      @default(0) @map("request_count")
+  outputTypeId    Int?     @map("output_type_id")
+  categoryId      Int?     @map("category_id")
+  status          String   @default("active") @map("status") // active, inactive, deleted
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  outputType AdcsOutputType? @relation(fields: [outputTypeId], references: [id])
+  category   AdcsCategory?   @relation(fields: [categoryId], references: [id])
+  graphFlow  AdcsNode[]
+
+  @@map("adcs_adaptor")
+}
+
+model UserApiKey {
+  id        Int      @id @default(autoincrement())
+  name      String   @map("name")
+  userId    Int      @map("user_id")
+  apiKey    String   @unique @map("api_key")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("user_api_key")
+}
+
+model AIModel {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String
+  baseUrl     String   @map("base_url")
+  apiKey      String   @map("api_key")
+  type        String   @map("type") // openai, anthropic, gemini
+  active      Boolean  @default(true) @map("active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("ai_model")
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  email          String?  @unique
+  password       String?
+  name           String?
+  walletAddress  String?  @unique @map("wallet_address")
+  nonce          Int      @default(0) @map("nonce")
+  isAdmin        Boolean  @default(false) @map("is_admin")
+  nonceTimestamp DateTime @map("nonce_timestamp") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("user")
+}
+
+model Consumer {
+  id                Int                @id @default(autoincrement())
+  address           String             @map("address")
+  status            String             @default("active") @map("status") // active, inactive, deleted
+  accId             Int                @map("acc_id")
+  requestCount      Int                @default(0) @map("request_count")
+  spendCount        Int                @default(0) @map("spend_count")
+  txHash            String?            @map("tx_hash")
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  lastFulfillment   DateTime           @default(now()) @map("last_fulfillment") @db.Timestamptz 
+  PrepaymentAccount PrepaymentAccount? @relation(fields: [accId], references: [id])
+  ConsumerRequest   ConsumerRequest[]
+
+  @@map("consumer")
+}
+
+model ConsumerRequest {
+  id         Int      @id @default(autoincrement())
+  consumerId Int      @map("consumer_id")
+  requestId  String   @map("request_id")
+  txHash     String   @map("tx_hash")
+  status     String   @default("pending") @map("status") // pending, fulfilled, failed
+  service    String   @default("VRF") @map("service") // VRF,Request-Response
+  amount     String   @default("0") @map("amount")
+  balance    String   @default("0") @map("balance")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  Consumer   Consumer @relation(fields: [consumerId], references: [id])
+
+  @@map("consumer_request")
+}
